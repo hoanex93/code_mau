@@ -1,0 +1,702 @@
+//lâý oracle vbox về và cài vbox lên
+https://www.virtualbox.org/wiki/Downloads
+
+//lấy bản desktop ubuntu 16.x 64 (cỡ 1.5GB) cho win/mac về
+http://releases.ubuntu.com/16.04/
+
+//cấu hình máy ảo ubuntu trên vbox
+//chọn 2gb ram, và ổ cứng 15gb
+//cấu hình cd từ ubuntu 16.x trên
+//lưu ý dùng shift left và phím windows để thoát chuột ra khỏi ubuntu trong vbox
+
+//bật máy ảo cài cắm ubuntu -> chọn phần cài kiểu update -> mất 30 phút, đặt pass dễ hiêu dễ nhớ thôi
+
+//mở máy ảo ubuntu trên vbox
+//một số lệnh cơ bản ubuntu
+//vào folder
+cd <đường dẫhadon>
+
+//ra khoi 1 tầng folder
+cd ..
+
+//về hosting
+cd ~
+
+//về thư mục gốc
+cd /
+
+//list 
+ls
+
+//xem và sửa file
+nano <têm file>
+//sau đó lưu
+<nhấn crt+o>
+<thoát/thoát không lưu crt+x>
+
+//tạo folder
+m<tên>
+
+//xoá folder
+rm -rf <tên folder>
+
+//khởi động lại server
+systemctl reboot -i 
+
+//cài jdk và openssh
+sudo apt-get update
+sudo apt-get install default-jdk
+sudo apt-get install openssh-server
+
+//kiểm tra jdk và ssh sau khi cài cắm
+java -version
+ssh -V
+
+//sẽ hiện ra version tương ứng nếu cài đúng
+
+//sửa file cho phép ssh từ nơi khác vào ubuntu
+sudo nano /etc/ssh/sshd_config
+//Chỉnh 1 dòng trong sshd_config
+PermitRootLogin prohibit-pasword
+--->sang:
+PermitRoogLogin yes
+//lưu gõ Ctr+O
+//thoát Ctr+X
+
+//restart ssh service
+sudo service ssh restart
+
+//tạo nhóm user hdgroup, add user hduser vào, gán quyền root, đặt pass dễ hiêu dễ nhớ thôi (123456)
+sudo addgroup hdgroup // groupadd hdgroup
+sudo adduser —ingroup hdgroup hduser  // useradd -g hdgroup
+sudo usermod -aG sudo hduser
+
+//chuyển sang hduser
+su - hduser
+
+//tạo khoá cho ssh (copy paste vào từ cmd trên win/Mac)
+ssh-keygen -t rsa
+cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys
+chmod 0600 $HOME/.ssh/authorized_keys
+
+//trong vbox, vào setting chuyển network tại máy ảo thành bridge_adapter
+//đợi một lúc rồi check ubuntu xem được cấp ip mới chưa
+//check bằng cách vào ubuntu/settings/network -> sẽ thấy có ip cùng dải với ip của mình
+
+//với WIndows user cài Putty lên, với Mac user khỏi cần cài. Cài đặt xem: putty.org/
+//Tại cửa sổ cmd putty, gõ truy cập máy ảo ubunbtu từ Windows putty (Mac thì trực tiếp từ terminal):
+ssh hduser@<ip của ubuntu máy mình>
+ví dụ của tôi: 
+
+ssh hduser@192.168.1.12
+
+//sau khi ssh từ xa (windows/Mac) được rồi copy dòng này vào, và tải hadoop về - cỡ 250MB - dùng acct user hduser
+//Nên dùng hadoop 2.7.+ vì support Spark 2.2.x
+wget https://dist.apache.org/repos/dist/release/hadoop/common/hadoop-2.7.5/hadoop-2.7.5.tar.gz
+//Hoặc bản đang thịnh hành 3.1.0
+//unzip file vừa download
+tar -xzvf hadoop-2.7.5.tar.gz
+
+//check xem folder list đã tạo và files cài đặt hadoop đã có chưa
+ls
+-> sẽ thấy folder hadoop-2.7.5...
+
+//chuyển folder vừa unzip sang user/hadoop
+sudo mv hadoop-2.7.5 /usr/local/hadoop
+
+//thay đổi hadoop file config
+sudo nano /usr/local/hadoop/etc/hadoop/hadoop-env.sh
+
+//trong hadoop config, đổi đường dẫn java
+#export JAVA_HOME=${JAVA_HOME}
+---> thành
+export JAVA_HOME=$(readlink -f /usr/bin/java | sed "s:bin/java::")
+
+//trong hadoop config, đổi OPTS
+export HADOOP_OPTS="$HADOOP_OPTS -Djava.net.preferIPv4Stack=true"
+---> thành
+export HADOOP_OPTS="$HADOOP_OPTS -Djava.net.preferIPv4Stack=true -Djava.security.krb5.realm= -Djava.security.krb5.kdc="
+
+//lưu crt+o, thoát crt+x
+
+//cấu hình cho file bashrc
+sudo nano ~/.bashrc
+
+//copy paste vào
+export JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-amd64
+export PATH=$PATH:$JAVA_HOME/bin
+export HADOOP_INSTALL=/usr/local/hadoop
+export PATH=$PATH:$HADOOP_INSTALL/bin
+export PATH=$PATH:$HADOOP_INSTALL/sbin
+export HADOOP_MAPRED_HOME=$HADOOP_INSTALL
+export HADOOP_COMMON_HOME=$HADOOP_INSTALL
+
+export HADOOP_HDFS_HOME=$HADOOP_INSTALL
+export YARN_HOME=$HADOOP_INSTALL
+export HADOOP_COMMON_LIB_NATIVE_DIR=$HADOOP_INSTALL/lib/native
+export HADOOP_OPTS="-Djava.library.path=$HADOOP_INSTALL/lib/native"
+alias hstart='/usr/local/hadoop/sbin/start-dfs.sh && /usr/local/hadoop/sbin/start-yarn.sh'
+alias hstop='/usr/local/hadoop/sbin/stop-yarn.sh && /usr/local/hadoop/sbin/stop-dfs.sh'
+
+//lưu crt+o, thoát crt+x
+source ~/.bashrc
+
+//cấu hình file core-site
+cd /usr/local/hadoop/etc/hadoop
+sudo nano core-site.xml
+//copy paste 
+<configuration>
+<property>
+<name>fs.default.name</name>
+<value>hdfs://localhost:9000</value>
+</property>
+</configuration>
+
+//copy file mapred từ mẫu
+cp /usr/local/hadoop/etc/hadoop/mapred-site.xml.template /usr/local/hadoop/etc/hadoop/mapred-site.xml
+//cấu hình file mapred-site
+cd /usr/local/hadoop/etc/hadoop
+sudo nano mapred-site.xml
+//copy paste 
+<configuration>
+<property>
+<name>mapred.job.tracker</name>
+<value>localhost:9001</value>
+</property>
+<property>
+<name>mapreduce.framework.name</name>
+<value>yarn</value>
+</property>
+</configuration>
+
+//cấu hình file yarn-site
+cd /usr/local/hadoop/etc/hadoop
+sudo nano yarn-site.xml
+//copy paste
+<property>
+<name>yarn.nodemanager.aux-services</name>
+<value>mapreduce_shuffle</value>
+</property>
+<property>
+<name>yarn.nodemanager.aux-services.mapreduce.shuffle.class</name>
+<value>org.apache.hadoop.mapred.ShuffleHandler</value>
+</property>
+
+//cấu hình file hdfs-site
+cd /usr/local/hadoop/etc/hadoop
+//tạo 02 folder, gán quyền hduser
+sudo mkdir -p /usr/local/hadoop_store/hdfs/namenode
+sudo mkdir -p /usr/local/hadoop_store/hdfs/datanode
+sudo chown -R hduser /usr/local/hadoop_store
+sudo nano hdfs-site.xml
+//copy paste 
+<configuration>
+<property>
+<name>dfs.replication</name>
+<value>4</value>
+</property>
+<property>
+<name>dfs.namenode.name.dir</name>
+<value> file:/usr/local/hadoop_store/hdfs/namenode </value>
+</property>
+<property>
+<name>dfs.datanode.data.dir</name>
+<value> file:/usr/local/hadoop_store/hdfs/datanode </value>
+</property>
+</configuration>
+
+//chuyển đinh dang hdfs
+hdfs namenode -format
+
+//ssh vào localhost
+ssh localhost
+
+//bật thử server hadoop
+hstart
+
+//stop hadoop
+hstop
+
+-> sẽ thấy start namenode, datanode, second namenode, yarn daemons bật
+//test tình trạng hadoop và cluster
+//vào máy ảo ubuntu
+//bật firefox vào localhost: 8088 -> sẽ thấy hosting status của cluster chạy
+
+
+//check hadoop
+hadoop
+-> sẽ ra list lệnh
+
+//check hdfs
+hdfs
+-> sẽ ra list lệnh
+
+//Cài trình xem code - https://www.sublimetext.com/3
+
+--------------------------------CÀI SPARK SHELL, SPARK SUBMIT----------------------
+//bat hdfs
+ssh localhost
+hstart
+//check xem chay ko, tai: localhost:8088
+
+//tao folder spark-log
+hadoop fs -mkdir /spark-logs
+//check xem co chua
+hadoop fs -ls /
+cd /usr/local/hadoop
+wget http://mirrors.viethosting.com/apache/spark/spark-2.3.1/spark-2.3.1-bin-hadoop2.7.tgz
+tar -xvf spark-2.3.1-bin-hadoop2.7.tgz
+mv spark-2.3.1-bin-hadoop2.7 spark
+
+//them PATH
+sudo nano ~/.bashrc
+//them vao
+export HADOOP_CONF_DIR=/usr/local/hadoop/etc/hadoop
+export SPARK_HOME=/usr/local/hadoop/spark
+export PATH=$SPARK_HOME/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/hadoop/lib/native:$LD_LIBRARY_PATH
+//ctr+o, enter, crt+x -> luu
+
+//logout, login system
+
+------------CONFIG LOCAL CLUSTER
+mv $SPARK_HOME/conf/spark-defaults.conf.template $SPARK_HOME/conf/spark-defaults.conf
+sudo nano $SPARK_HOME/conf/spark-defaults.conf
+//them vao (neu avail dang co 8gb ram)
+spark.master    yarn
+spark.driver.memory    2g
+spark.executor.memory          2g
+spark.yarn.am.memory    2g
+spark.eventLog.enabled  true
+spark.eventLog.dir hdfs://localhost:9000/spark-logs
+spark.history.provider            org.apache.spark.deploy.history.FsHistoryProvider
+spark.history.fs.logDirectory     hdfs://localhost:9000/spark-logs
+spark.history.fs.update.interval  10s
+spark.history.ui.port             18080
+//ctr+o, enter, ctr+x, luu
+
+//setup nhieu cluster
+//xem: https://linode.com/docs/databases/hadoop/how-to-install-and-set-up-hadoop-cluster/
+
+//bat spark master
+$SPARK_HOME/sbin/start-master.sh
+//check localhost:8080 -> phai co  Spark Master at spark://<ten may>:7077
+
+//bat slave (neu co)
+$SPARK_HOME/sbin/start-slave.sh spark://<ten may master>:7077
+
+//dam bao, da cos local trong host /etc/hosts:
+127.0.0.1 <ten may master>
+
+//bat history
+$SPARK_HOME/sbin/start-history-server.sh
+//check: localhost:18080 -> thay history spark Event log directory: hdfs://localhost:9000/spark-logs
+
+//lay vidu
+wget -O alice.txt https://www.gutenberg.org/files/11/11-0.txt
+hadoop fs -mkdir inputs
+hadoop fs -put alice.txt /inputs
+
+//chay thu spark-shell
+spark-shell
+//ra thong tin
+Welcome to
+      ____              __
+     / __/__  ___ _____/ /__
+    _\ \/ _ \/ _ `/ __/  '_/
+   /___/ .__/\_,_/_/ /_/\_\   version 2.3.1
+      /_/
+         
+Using Scala version 2.11.8 (OpenJDK 64-Bit Server VM, Java 1.8.0_181)
+
+scala> var input = spark.read.textFile("/inputs/alice.txt")
+// Count the number of non blank lines
+scala>input.filter(line => line.length()>0).count()
+//ra ket qua: res0: Long = 2791 
+
+//submit app (.jar),  replace --deploy-mode client / --deploy-mode cluster
+spark-submit --deploy-mode client \
+               --class org.apache.spark.examples.SparkPi \
+               $SPARK_HOME/examples/jars/spark-examples_2.11-2.2.0.jar 10
+
+//stop master/slave
+$SPARK_HOME/sbin/stop-slave.sh
+$SPARK_HOME/sbin/stop-master.sh
+
+--------------------------------CÀI SBT để COMPILE SCALA----------------------
+//setup sbt on ubuntu
+echo "deb https://dl.bintray.com/sbt/debian /" | sudo tee -a /etc/apt/sources.list.d/sbt.list
+sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv 2EE0EA64E40A89B84B2DF73499E82A75642AC823
+sudo apt-get update
+sudo apt-get install sbt
+
+
+--------------------------------MỘT SỐ LỆNH HDFS CƠ BẢN----------------------
+//tạo thư mục hdfs
+hadoop fs -mkdir -p /user/hduser/input
+
+//upload file lên hdfs
+hadoop fs -put <datafile>  /user/hduser/input
+
+//đọc file hdfs
+hadoop fs -cat <path[filename]>
+
+//copy file hdfs
+hadoop fs -cp <hdfs_src> <localdst>
+
+//move file hdfs
+hadoop fs -mv <src> <dest>
+
+//remove file hdfs
+hadoop fs -rm <arg>
+
+//list all hdfs jobs
+hadoop job -list
+
+//kill hdfs job
+hadoop job -kill <job#>
+
+//tắt hadoop
+hstop
+
+-------------------------------CÀI ZEPPELIN
+wget https://www-eu.apache.org/dist/zeppelin/zeppelin-0.8.0/zeppelin-0.8.0-bin-netinst.tgz 
+//hoặc từ docker
+docker run -p 8080:8080 --rm --name zeppelin apache/zeppelin:0.8.0
+//download xong, unzip
+tar -xvzf zeppelin-0.8.0-bin-netinst.tgz 
+
+//chuyển port
+cd zeppelin-0.8.0-bin-netins
+cp conf/zeppelin-site.xml.template zeppelin-site.xml
+cd conf
+sudo nano zeppelin-site.xml
+//chuyển 8080 sang 8180
+
+//cd bin,start
+cd zeppelin-0.8.0-bin-netins
+
+bin/zeppelin-daemon.sh start
+
+//check <ip>:8180, phải thấy website của Zep
+
+//stop Zep
+bin/zeppelin-daemon.sh stop
+
+
+
+-------------------------------CÀI NIFI
+//tập lấy content facebook qua NIFI
+cd ~
+wget http://mirror.downloadvn.com/apache/nifi/1.8.0/nifi-1.8.0-bin.tar.gz
+//unzip
+tar -xvzf nifi-1.8.0-bin.tar.gz
+
+//đổi cổng nifi
+
+cd nifi-1.8.0 
+cd conf
+sudo nano nifi.properties
+// đổi dòng nifi.web.http.port=8080   sang 8280
+
+//start nifi
+cd nifi-1.8.0 
+bin/nifi.sh run
+//phải đợi 5 phút, sẽ xem đc navigator của Nifi qua, http://<ip của bạn>:8280/nifi
+
+//xem status
+bin/nifi.sh status
+
+//stop Nifi
+bin/nifi.sh stop
+
+//lấy token của user để lấy thông tin bài livestream của bán hàng facebook
+//vào https://developers.facebook.com/tools/explorer/, hoặc lấy fb token
+// ví dụ: 
+
+
+
+
+
+------------------------------ CÀI THEM CAC WAREHOUSE NEU THAY CAN THIET-----------------------------------
+------------------------------ CÀI HIVE -----------------------------------
+
+//lấy hive về
+http://www.apache.org/dyn/closer.cgi/hive/
+wget <bản mình cần> //ví dụ 0.14.0 - khuyến nghị dùng bản mới 3.0.0
+tar zxvf apache-hive-0.14.0-bin.tar.gz
+
+//copy toàn bộ vào local/hive
+mv apache-hive-0.14.0-bin /usr/local/hive
+
+//đưa vào ./bashrc 
+sudo nano ~/.bashrc 
+export HIVE_HOME=/usr/local/hive
+export PATH=$PATH:$HIVE_HOME/bin
+export CLASSPATH=$CLASSPATH:/usr/local/Hadoop/lib/*:.
+export CLASSPATH=$CLASSPATH:/usr/local/hive/lib/*:.
+// lưu  ctr+o, ctr+x
+//lưu bashrc
+source ~/.bashrc
+
+//cấu hình hive
+cd $HIVE_HOME/conf
+cp hive-env.sh.template hive-env.sh
+//thêm vào 
+sudo nano hive-env.sh
+export HADOOP_HOME=/usr/local/hadoop
+// lưu  ctr+o, ctr+x
+
+//cài cắm mysql cho db metastore của hive
+sudo apt-get update
+sudo apt-get install mysql-server
+//thêm user name và pass - ghi nhớ lại cho khai báo sau
+//chuyên driver mysql vào hive
+ln -s /usr/share/java/mysql-connector-java.jar /usr/lib/hive/lib/mysql-connector-java.jar
+
+//tạo metastore data cho hive
+/etc/init.d/mysql start
+ mysql -uroot -proot -e'CREATE DATABASE hcatalog;'
+
+//sửa file hive-site.xml
+cd $HIVE_HOME/conf
+cp hive-default.xml.template hive-site.xml
+sudo nano hive-site.xml
+//có rất nhiều property - tìm sửa các property có name sau
+//lệnh tìm trong nano là F6
+//lưu ý áp dụng cho mysql 5.6 trở lên
+<property>
+        <name>javax.jdo.option.ConnectionURL</name>
+        <value>jdbc:mysql://localhost/hcatalog?createDatabaseIfNotExist=true&amp;autoReconnect=true&amp;useSSL=false</value>
+</property>
+    <property>
+        <name>javax.jdo.option.ConnectionUserName</name>
+        <value>root</value>
+    </property>
+
+    <property>
+        <name>javax.jdo.option.ConnectionPassword</name>
+        <value> là pass đặt lúc trước trên mysql</value>
+    </property>
+    <property>
+        <name>javax.jdo.option.ConnectionDriverName</name>
+        <value>com.mysql.jdbc.Driver</value>
+    </property>
+//chạy metastore của hive
+hive --service metastore
+//nếu ko thấy lỗi gì ok, nếu có lỗi tiếp
+
+//vào mysql check xem db hcatalog có chưa, và thêm schema
+mysql -u root -p
+//thêm pass
+//đang trong mysql
+//mở db hcatalog
+mysql>use hcatalog;
+//souce schema
+mysql>source hive-schema-<your_version>.mysql.sql;
+//hiện tại version là 3.0.0
+///chạy lại 1-2 lần 2 lệnh trên thấy update là ok
+
+//chạy metastore của hive lần nữa
+hive --service metastore &
+//phải ko có lỗi
+check cổng 9083 nó phải đc gắn với một dịch vụ
+netstat -an | grep 9083
+
+//test hive
+//vào hdfs trên máy
+ssh localhost
+//list dir của hdfs
+hadoop fs -ls /m 
+//tạo folder cho hive
+hadoop fs -mkdir /tmp 
+hadoop fs -mkdir /user/hive/warehouse
+hadoop fs -chmod g+w /tmp 
+hadoop fs -chmod g+w /user/hive/warehouse
+
+//mở hive
+cd $HIVE_HOME
+bin/hive
+//thấy có lệnh hive> là ok
+//tại đó thử xem bảng , và phải ok đc
+hive> show tables; 
+OK 
+Time taken: 2.798 seconds 
+hive>
+
+//để thoát hive
+hive> exit;
+// để thoát localhost
+exit
+
+//check hive-site.xml
+sudo nano $HIVE_HOME/conf/hive-site.xml
+
+------------------------------ CÀI PRESTO SERVER-----------------------------------
+//cài tree
+sudo apt install tree
+
+//lấy presto cài presto server
+//đang ở ~
+cd ~
+wget https://repo1.maven.org/maven2/com/facebook/presto/presto-server/0.204/presto-server-0.204.tar.gz
+tar zxvf presto-server-0.204.tar.gz
+
+//cấu hình presto server
+cd presto-server-0.60
+mkdir data
+mkdir metastore
+mkdir etc
+cd etc
+sudo nano node.properties
+//đưa vào thông tin như sau, rồi lưu crt+0, crt+x
+node.environment=production
+node.id=ffffffff-ffff-ffff-ffff-ffffffffffff
+node.data-dir=~/presto-server-0.204/data
+
+sudo nano jvm.config
+//đưa vào thông tin như sau, rồi lưu crt+0, crt+x
+-server
+-Xmx16G
+-XX:+UseConcMarkSweepGC
+-XX:+ExplicitGCInvokesConcurrent
+-XX:+CMSClassUnloadingEnabled
+-XX:+AggressiveOpts
+-XX:+HeapDumpOnOutOfMemoryError
+-XX:OnOutOfMemoryError=kill -9 %p
+-XX:PermSize=150M
+-XX:MaxPermSize=150M
+-XX:ReservedCodeCacheSize=150M
+
+sudo nano config.properties
+//đưa vào thông tin như sau, rồi lưu crt+0, crt+x
+//cho master
+coordinator=true
+node-scheduler.include-coordinator=true
+datasources=jmx
+http-server.http.port=8080
+query.max-memory=800MB
+query.max-memory-per-node=200MB
+presto-metastore.db.type=h2
+presto-metastore.db.filename=~/presto-server-0.204/metastore
+task.max-memory=1GB
+discovery-server.enabled=true
+discovery.uri=http://<master>:8080
+
+//<master> IP đc dùng
+//cho worker
+coordinator=false
+datasources=jmx,hive
+http-server.http.port=8080
+presto-metastore.db.type=h2
+presto-metastore.db.filename=/home/presto-server-0.204/metastore
+task.max-memory=1GB
+discovery.uri=http://<master>:8080
+////<master> IP đc dùng
+
+sudo nano log.properties
+//đưa vào thông tin như sau, rồi lưu crt+0, crt+x
+com.facebook.presto=DEBUG
+
+//tạo catalog
+cd etc
+mkdir catalog
+//tạo jmx trong catalog
+sudo nano jmx.properties
+//đưa vào thông tin như sau, rồi lưu crt+0, crt+x
+connector.name=jmx
+
+sudo nano hive.properties
+//đưa vào thông tin như sau, rồi lưu crt+0, crt+x
+connector.name=hive-hadoop2
+hive.metastore.uri=thrift://<master>:10000
+//<master> IP đc dùng
+
+//run presto server
+//tại folder presto-server-0.60
+bin/launcher run
+//hoặc
+~/presto-server-0.204/bin/launcher start
+
+------------------------------ CÀI SERVICE DISCOVERY-----------------------------------
+
+//dựng dịch vụ Discovery
+//tương tự trên tạo các thư mục và file properties
+cd ~
+wget http://central.maven.org/maven2/io/airlift/discovery/discovery-server/1.29/discovery-server-1.29.tar.gz
+tar zxvf discovery-server-1.29.tar.gz
+cd discovery-server-1.29
+//tạo data
+mkdir data
+mkdir etc
+cd etc
+//tạo node.properties
+node.environment=production
+node.id=ffffffff-ffff-ffff-ffff-ffffffffffff
+node.data-dir=~/discovery-server-1.29/data
+//đưa vào thông tin như sau, rồi lưu crt+0, crt+x
+
+//jvm.config
+-server
+-Xmx1G
+-XX:+UseConcMarkSweepGC
+-XX:+ExplicitGCInvokesConcurrent
+-XX:+AggressiveOpts
+-XX:+HeapDumpOnOutOfMemoryError
+-XX:OnOutOfMemoryError=kill -9 %p
+
+//config.properties
+http-server.http.port=8411
+
+//start Discovery
+bin/launcher run
+//hoặc
+bin/launcher start
+//hoặc
+~/discovery-server-1.29/bin/launcher start
+
+------------------------------ CÀI PRESTO CLIENT-----------------------------------
+//check hive-site.xml
+sudo nano $HIVE_HOME/conf/hive-site.xml
+//check to start hive metastore
+hive --service metastore &
+//nếu ko start đc metastore, xóa thread đag ở 9083
+//view thread đang dùng cổng 9083
+ lsof -i :9083
+ kill <pid>
+
+
+//check to start hive server trước khi start presto client
+hive --service hiveserver2
+//check to start prestoserver
+~/presto-server-0.204/bin/launcher start
+sudo nano ~/presto-server-0.204/etc/catalog/hive.properties
+//check to start discovery service
+~/discovery-server-1.29/bin/launcher start
+
+
+//lấy presto client về 
+cd ~
+wget https://repo1.maven.org/maven2/com/facebook/presto/presto-cli/0.204/presto-cli-0.204-executable.jar
+//chuyển jar sang folder presto, để chạy
+mv presto-cli-0.204-executable.jar presto
+chmod +x presto
+
+//start prestor client
+./presto --server localhost:8080 --catalog hive --schema default
+
+//sau đó có thể query db tới hive từ presto được.
+show databases;
+show tables;
+
+
+------------------------------ CÀI FIREFOX VÀ SILENT RUN-----------------------------------
+
+//Riêng firefox trên linux thì cài thêm headless firefox (và driver cũng phải trỏ tới gói firefox cho linux 64)
+sudo apt-add-repository ppa:mozillateam/firefox-next
+sudo apt-get update
+sudo apt-get install firefox xvfb
+sudo apt-get update && sudo apt-get install libnss3
+Xvfb :10 -ac &
+export DISPLAY=:10
+
